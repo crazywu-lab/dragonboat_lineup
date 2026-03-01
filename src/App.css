@@ -319,6 +319,8 @@ h2 {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  overflow: visible;
 }
 
 .slot-actions {
@@ -328,21 +330,34 @@ h2 {
 }
 
 .move-btn {
-  background: rgba(155, 126, 217, 0.4);
+  background: rgba(155, 126, 217, 0.6);
   border: none;
   color: white;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 1rem;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .move-btn:hover {
-  background: rgba(155, 126, 217, 0.6);
+  background: rgba(155, 126, 217, 0.9);
+}
+
+@media (max-width: 600px) {
+  .slot-actions {
+    flex-direction: row;
+    gap: 2px;
+  }
+  
+  .move-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 1.2rem;
+  }
 }
 
 .paddler-info .name {
