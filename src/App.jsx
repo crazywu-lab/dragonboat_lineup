@@ -4,6 +4,7 @@ import {
   closestCenter,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
@@ -18,7 +19,7 @@ import { CSS } from '@dnd-kit/utilities'
 import * as XLSX from 'xlsx'
 import './App.css'
 
-function SortableSlot({ id, paddler, index, side, onRemove }) {
+function SortableSlot({ id, paddler, index, side, onRemove, onMoveLeft, onMoveRight }) {
   const {
     attributes,
     listeners,
@@ -47,15 +48,23 @@ function SortableSlot({ id, paddler, index, side, onRemove }) {
         <div className="paddler-info">
           <span className="name">{paddler.name}</span>
           <span className="details">{paddler.weight}kg, {paddler.experience}yr</span>
-          <button
-            className="remove"
-            onClick={(e) => {
-              e.stopPropagation()
-              onRemove(paddler.id)
-            }}
-          >
-            ×
-          </button>
+          <div className="slot-actions">
+            {side === 'right' && onMoveRight && (
+              <button className="move-btn" onClick={(e) => { e.stopPropagation(); onMoveRight(index); }}>→</button>
+            )}
+            {side === 'left' && onMoveLeft && (
+              <button className="move-btn" onClick={(e) => { e.stopPropagation(); onMoveLeft(index); }}>←</button>
+            )}
+            <button
+              className="remove"
+              onClick={(e) => {
+                e.stopPropagation()
+                onRemove(paddler.id)
+              }}
+            >
+              ×
+            </button>
+          </div>
         </div>
       ) : (
         <span className="empty">Empty</span>
@@ -77,7 +86,17 @@ function App() {
   const fileInputRef = useRef(null)
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 200,
+        tolerance: 8,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -184,6 +203,38 @@ function App() {
     setLeftSlots(leftSlots.map(p => p?.id === id ? null : p))
     setRightSlots(rightSlots.map(p => p?.id === id ? null : p))
     setPaddlers(paddlers.filter(p => p.id !== id))
+  }
+
+  const moveToRight = (leftIndex) => {
+    const paddler = leftSlots[leftIndex]
+    if (!paddler) return
+    
+    // Find first empty slot on right
+    const emptyIdx = rightSlots.findIndex(s => s === null)
+    if (emptyIdx === -1) return
+    
+    const newLeft = [...leftSlots]
+    const newRight = [...rightSlots]
+    newLeft[leftIndex] = null
+    newRight[emptyIdx] = paddler
+    setLeftSlots(newLeft)
+    setRightSlots(newRight)
+  }
+
+  const moveToLeft = (rightIndex) => {
+    const paddler = rightSlots[rightIndex]
+    if (!paddler) return
+    
+    // Find first empty slot on left
+    const emptyIdx = leftSlots.findIndex(s => s === null)
+    if (emptyIdx === -1) return
+    
+    const newLeft = [...leftSlots]
+    const newRight = [...rightSlots]
+    newRight[rightIndex] = null
+    newLeft[emptyIdx] = paddler
+    setLeftSlots(newLeft)
+    setRightSlots(newRight)
   }
 
   const handleDragEnd = (event) => {
@@ -369,6 +420,7 @@ function App() {
                         index={i}
                         side="left"
                         onRemove={removePaddler}
+                        onMoveLeft={moveToLeft}
                       />
                     ))}
                   </SortableContext>
@@ -391,6 +443,7 @@ function App() {
                         index={i}
                         side="right"
                         onRemove={removePaddler}
+                        onMoveRight={moveToRight}
                       />
                     ))}
                   </SortableContext>

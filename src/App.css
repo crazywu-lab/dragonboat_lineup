@@ -321,6 +321,30 @@ h2 {
   gap: 8px;
 }
 
+.slot-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.move-btn {
+  background: rgba(155, 126, 217, 0.4);
+  border: none;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.move-btn:hover {
+  background: rgba(155, 126, 217, 0.6);
+}
+
 .paddler-info .name {
   font-weight: bold;
 }
@@ -362,6 +386,7 @@ h2 {
 .slot.dragging {
   background: rgba(155, 126, 217, 0.4);
   border: 2px solid #9b7ed9;
+  touch-action: none;
 }
 
 .slot {
@@ -370,6 +395,17 @@ h2 {
 
 .slot:active {
   cursor: grabbing;
+}
+
+/* Mobile touch fixes */
+@media (max-width: 600px) {
+  .paddler-slots {
+    touch-action: pan-x pan-y;
+  }
+  
+  .slot {
+    touch-action: none;
+  }
 }
 
 /* Paddler List */
