@@ -332,7 +332,7 @@ function App() {
         >
           <section className="boat-section">
             <h2>
-              Boat ({paddlers.length}/10 paddlers)
+              Boat ({paddlers.length}/20 paddlers)
               {paddlers.length > 0 && (
                 <span className="stats">
                   | Avg: {avgWeight}kg
@@ -411,7 +411,7 @@ function App() {
                 <span className="paddler-name">{p.name}</span>
                 <span>{p.weight}kg</span>
                 <span>{p.experience}yr</span>
-                <span className={`side ${p.side}`}>{p.side}</span>
+                <span className="side-tag">{p.side}</span>
                 <button className="remove" onClick={() => removePaddler(p.id)}>×</button>
               </div>
             ))}
