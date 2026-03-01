@@ -19,7 +19,7 @@ import { CSS } from '@dnd-kit/utilities'
 import * as XLSX from 'xlsx'
 import './App.css'
 
-function SortableSlot({ id, paddler, index, side, onRemove, onMoveLeft, onMoveRight }) {
+function SortableSlot({ id, paddler, index, onRemove }) {
   const {
     attributes,
     listeners,
@@ -48,23 +48,16 @@ function SortableSlot({ id, paddler, index, side, onRemove, onMoveLeft, onMoveRi
         <div className="paddler-info">
           <span className="name">{paddler.name}</span>
           <span className="details">{paddler.weight}kg, {paddler.experience}yr</span>
-          <div className="slot-actions">
-            {side === 'right' && onMoveRight && (
-              <button className="move-btn" onClick={(e) => { e.stopPropagation(); onMoveRight(index); }}>→</button>
-            )}
-            {side === 'left' && onMoveLeft && (
-              <button className="move-btn" onClick={(e) => { e.stopPropagation(); onMoveLeft(index); }}>←</button>
-            )}
-            <button
-              className="remove"
-              onClick={(e) => {
-                e.stopPropagation()
-                onRemove(paddler.id)
-              }}
-            >
-              ×
-            </button>
-          </div>
+          <span className={`side-badge ${paddler.side}`}>{paddler.side}</span>
+          <button
+            className="remove"
+            onClick={(e) => {
+              e.stopPropagation()
+              onRemove(paddler.id)
+            }}
+          >
+            ×
+          </button>
         </div>
       ) : (
         <span className="empty">Empty</span>
@@ -73,15 +66,57 @@ function SortableSlot({ id, paddler, index, side, onRemove, onMoveLeft, onMoveRi
   )
 }
 
+function SortablePaddler({ id, paddler, onRemove }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`paddler-item ${isDragging ? 'dragging' : ''}`}
+      {...attributes}
+      {...listeners}
+    >
+      <span className="name">{paddler.name}</span>
+      <span className="details">{paddler.weight}kg, {paddler.experience}yr</span>
+      <span className={`side-badge ${paddler.side}`}>{paddler.side}</span>
+      <button
+        className="remove"
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemove(paddler.id)
+        }}
+      >
+        ×
+      </button>
+    </div>
+  )
+}
+
 function App() {
-  const [paddlers, setPaddlers] = useState([])
-  const [leftSlots, setLeftSlots] = useState(Array(20).fill(null))
-  const [rightSlots, setRightSlots] = useState(Array(20).fill(null))
+  const [paddlerList, setPaddlerList] = useState([])
+  const [leftSlots, setLeftSlots] = useState(Array(10).fill(null))
+  const [rightSlots, setRightSlots] = useState(Array(10).fill(null))
+  const [drummer, setDrummer] = useState('')
+  const [steer, setSteer] = useState('')
   const [form, setForm] = useState({
     name: '',
     weight: 60,
     experience: 3,
-    side: 'right',
+    side: 'any',
   })
   const fileInputRef = useRef(null)
 
@@ -114,8 +149,7 @@ function App() {
       const sheet = workbook.Sheets[sheetName]
       const json = XLSX.utils.sheet_to_json(sheet)
 
-      // Expected columns: Name, Weight, Experience, Side
-      const newPaddlers = json.map((row, idx) => ({
+      let newPaddlers = json.map((row, idx) => ({
         name: row.Name || row.name || row.姓名 || '',
         weight: Number(row.Weight || row.weight || row.体重 || 60),
         experience: Number(row.Experience || row.experience || row.经验 || 3),
@@ -123,32 +157,14 @@ function App() {
         id: Date.now() + idx,
       })).filter(p => p.name)
 
-      // Add paddlers to slots
-      let leftIdx = 0
-      let rightIdx = 0
-      const newLeftSlots = [...leftSlots]
-      const newRightSlots = [...rightSlots]
+      // Check if total exceeds 20
+      const totalAfterImport = paddlerList.length + newPaddlers.length
+      if (totalAfterImport > 20) {
+        alert(`Maximum 20 paddlers allowed! You have ${totalAfterImport} paddlers. Only first ${20 - paddlerList.length} will be added.`)
+        newPaddlers = newPaddlers.slice(0, 20 - paddlerList.length)
+      }
 
-      newPaddlers.forEach(p => {
-        if (p.side === 'left' && leftIdx < 10) {
-          newLeftSlots[leftIdx++] = p
-        } else if (p.side === 'right' && rightIdx < 10) {
-          newRightSlots[rightIdx++] = p
-        } else {
-          // Put on lighter side
-          const leftWeight = newLeftSlots.reduce((s, p) => s + (p?.weight || 0), 0)
-          const rightWeight = newRightSlots.reduce((s, p) => s + (p?.weight || 0), 0)
-          if (leftWeight <= rightWeight && leftIdx < 10) {
-            newLeftSlots[leftIdx++] = p
-          } else if (rightIdx < 10) {
-            newRightSlots[rightIdx++] = p
-          }
-        }
-      })
-
-      setLeftSlots(newLeftSlots)
-      setRightSlots(newRightSlots)
-      setPaddlers([...paddlers, ...newPaddlers])
+      setPaddlerList([...paddlerList, ...newPaddlers])
     }
     reader.readAsArrayBuffer(file)
     event.target.value = ''
@@ -156,85 +172,118 @@ function App() {
 
   const addPaddler = () => {
     if (!form.name.trim()) return
+    
+    if (paddlerList.length >= 20) {
+      alert('Maximum 20 paddlers allowed!')
+      return
+    }
+    
     const newPaddler = { ...form, id: Date.now() }
     
-    // Find first empty slot on the preferred side
-    if (form.side === 'left') {
-      const emptyIdx = leftSlots.findIndex(s => s === null)
-      if (emptyIdx !== -1) {
-        const newSlots = [...leftSlots]
-        newSlots[emptyIdx] = newPaddler
-        setLeftSlots(newSlots)
-      }
-    } else if (form.side === 'right') {
-      const emptyIdx = rightSlots.findIndex(s => s === null)
-      if (emptyIdx !== -1) {
-        const newSlots = [...rightSlots]
-        newSlots[emptyIdx] = newPaddler
-        setRightSlots(newSlots)
-      }
-    } else {
-      // "any" - put on lighter side
-      const leftWeight = leftSlots.reduce((s, p) => s + (p?.weight || 0), 0)
-      const rightWeight = rightSlots.reduce((s, p) => s + (p?.weight || 0), 0)
-      
-      if (leftWeight <= rightWeight) {
-        const emptyIdx = leftSlots.findIndex(s => s === null)
-        if (emptyIdx !== -1) {
-          const newSlots = [...leftSlots]
-          newSlots[emptyIdx] = newPaddler
-          setLeftSlots(newSlots)
-        }
-      } else {
-        const emptyIdx = rightSlots.findIndex(s => s === null)
-        if (emptyIdx !== -1) {
-          const newSlots = [...rightSlots]
-          newSlots[emptyIdx] = newPaddler
-          setRightSlots(newSlots)
-        }
-      }
-    }
-
-    setPaddlers([...paddlers, newPaddler])
-    setForm({ name: '', weight: 60, experience: 3, side: 'right' })
+    // Add new paddler and sort by weight (for any-side paddlers)
+    const newList = [...paddlerList, newPaddler].sort((a, b) => {
+      // Prefer paddlers with specific side preference
+      if (a.side !== 'any' && b.side === 'any') return -1
+      if (a.side === 'any' && b.side !== 'any') return 1
+      // Then sort by weight
+      return a.weight - b.weight
+    })
+    
+    setPaddlerList(newList)
+    setForm({ name: '', weight: 60, experience: 3, side: 'any' })
   }
 
   const removePaddler = (id) => {
+    setPaddlerList(paddlerList.filter(p => p.id !== id))
+  }
+
+  const generateLineup = () => {
+    if (paddlerList.length > 20) {
+      alert('Maximum 20 paddlers allowed!')
+      return
+    }
+    
+    // Separate paddlers by side preference
+    const leftPreferred = paddlerList.filter(p => p.side === 'left')
+    const rightPreferred = paddlerList.filter(p => p.side === 'right')
+    const anySide = paddlerList.filter(p => p.side !== 'left' && p.side !== 'right')
+    
+    // Position weights: front/back lighter (1), middle heavier (2)
+    const positionWeights = [1, 1, 1, 2, 2, 2, 2, 1, 1, 1]
+    
+    const newLeft = Array(10).fill(null)
+    const newRight = Array(10).fill(null)
+    
+    // Helper to place paddlers by positionWeights (heavier in middle)
+    const placeByPosition = (paddlers, sideArray) => {
+      if (paddlers.length === 0) return
+      
+      const sorted = [...paddlers].sort((a, b) => a.weight - b.weight)
+      const midIdx = Math.floor(sorted.length / 2) + 1
+      const light = sorted.slice(0, midIdx)
+      const heavy = sorted.slice(midIdx)
+      
+      let lightIdx = 0
+      let heavyIdx = 0
+      
+      positionWeights.forEach((weight, i) => {
+        if (weight === 2 && heavyIdx < heavy.length) {
+          sideArray[i] = heavy[heavyIdx++]
+        } else {
+          sideArray[i] = light[lightIdx++]
+        }
+      })
+    }
+    
+    // Fill remaining with any-side paddlers, balancing by weight
+    const remainingAny = [...anySide]
+    let leftFilled = leftPreferred.length;
+    let rightFilled = rightPreferred.length;
+    
+    remainingAny.forEach(p => {
+      const leftWeight = newLeft.reduce((s, p) => s + (p?.weight || 0), 0)
+      const rightWeight = newRight.reduce((s, p) => s + (p?.weight || 0), 0)
+      
+      if (leftWeight <= rightWeight && leftFilled < 10) {
+        // newLeft[leftFilled++] = p
+        leftPreferred.push(p);
+        leftFilled++;
+      } else {
+        // newRight[rightFilled++] = p
+        rightPreferred.push(p);
+        rightFilled++;
+      }
+    })
+
+    // Place left-preferred on left side (heavier in middle)
+    placeByPosition(leftPreferred, newLeft)
+    
+    // Place right-preferred on right side (heavier in middle)
+    placeByPosition(rightPreferred, newRight)
+
+    setLeftSlots(newLeft)
+    setRightSlots(newRight)
+  }
+
+  const clearList = () => {
+    setPaddlerList([])
+  }
+
+  const clearBoat = () => {
+    setLeftSlots(Array(10).fill(null))
+    setRightSlots(Array(10).fill(null))
+  }
+
+  const removeFromBoat = (id) => {
     setLeftSlots(leftSlots.map(p => p?.id === id ? null : p))
     setRightSlots(rightSlots.map(p => p?.id === id ? null : p))
-    setPaddlers(paddlers.filter(p => p.id !== id))
+    setPaddlerList(paddlerList.filter(p => p.id !== id))
   }
 
-  const moveToRight = (leftIndex) => {
-    const paddler = leftSlots[leftIndex]
-    if (!paddler) return
-    
-    // Find first empty slot on right
-    const emptyIdx = rightSlots.findIndex(s => s === null)
-    if (emptyIdx === -1) return
-    
-    const newLeft = [...leftSlots]
-    const newRight = [...rightSlots]
-    newLeft[leftIndex] = null
-    newRight[emptyIdx] = paddler
-    setLeftSlots(newLeft)
-    setRightSlots(newRight)
-  }
-
-  const moveToLeft = (rightIndex) => {
-    const paddler = rightSlots[rightIndex]
-    if (!paddler) return
-    
-    // Find first empty slot on left
-    const emptyIdx = leftSlots.findIndex(s => s === null)
-    if (emptyIdx === -1) return
-    
-    const newLeft = [...leftSlots]
-    const newRight = [...rightSlots]
-    newRight[rightIndex] = null
-    newLeft[emptyIdx] = paddler
-    setLeftSlots(newLeft)
-    setRightSlots(newRight)
+  const handleListDragEnd = (event) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    setPaddlerList(arrayMove(paddlerList, active.index, over.index))
   }
 
   const handleDragEnd = (event) => {
@@ -244,17 +293,13 @@ function App() {
 
     const activeId = active.id
     const overId = over.id
-
-    // Parse the id format: "left-0" or "right-0"
     const [activeSide, activeIndex] = activeId.split('-')
     const [overSide, overIndex] = overId.split('-')
 
     if (activeSide === overSide) {
-      // Same side - reorder
       const sideSlots = activeSide === 'left' ? [...leftSlots] : [...rightSlots]
       const fromIndex = parseInt(activeIndex)
       const toIndex = parseInt(overIndex)
-      
       const newSlots = arrayMove(sideSlots, fromIndex, toIndex)
       
       if (activeSide === 'left') {
@@ -263,17 +308,18 @@ function App() {
         setRightSlots(newSlots)
       }
     } else {
-      // Different side - move paddler
       const fromSlots = activeSide === 'left' ? [...leftSlots] : [...rightSlots]
-      const toSlots = overSide === 'left' ? [...leftSlots] : [...rightSlots]
+      const toSlots = activeSide === 'left' ? [...rightSlots] : [...leftSlots]
       
       const fromIndex = parseInt(activeIndex)
       const toIndex = parseInt(overIndex)
       
       const paddler = fromSlots[fromIndex]
-      fromSlots[fromIndex] = null
+      const targetPaddler = toSlots[toIndex]
+      
+      fromSlots[fromIndex] = targetPaddler
       toSlots[toIndex] = paddler
-
+      
       if (activeSide === 'left') {
         setLeftSlots(fromSlots)
         setRightSlots(toSlots)
@@ -284,17 +330,11 @@ function App() {
     }
   }
 
-  const getAllSlots = () => {
-    return [
-      ...leftSlots.map((p, i) => ({ id: `left-${i}`, paddler: p, side: 'left', index: i })),
-      ...rightSlots.map((p, i) => ({ id: `right-${i}`, paddler: p, side: 'right', index: i })),
-    ]
-  }
-
-  const totalWeight = paddlers.reduce((sum, p) => sum + p.weight, 0)
-  const avgWeight = paddlers.length ? Math.round(totalWeight / paddlers.length) : 0
+  const totalWeight = [...leftSlots, ...rightSlots].reduce((sum, p) => sum + (p?.weight || 0), 0)
+  const avgWeight = [...leftSlots, ...rightSlots].filter(p => p).length ? Math.round(totalWeight / [...leftSlots, ...rightSlots].filter(p => p).length) : 0
   const leftWeight = leftSlots.reduce((s, p) => s + (p?.weight || 0), 0)
   const rightWeight = rightSlots.reduce((s, p) => s + (p?.weight || 0), 0)
+  const filledSlots = [...leftSlots, ...rightSlots].filter(p => p).length
 
   return (
     <div className="app">
@@ -305,10 +345,10 @@ function App() {
       <section className="instructions">
         <h2>📖 How to Use</h2>
         <ol>
-          <li><strong>Add paddlers</strong> manually using the form, or import from an Excel file</li>
-          <li><strong>Drag & drop</strong> paddlers to reorder or move between left/right sides</li>
-          <li><strong>Balance the boat</strong> by checking the weight totals on each side</li>
-          <li><strong>Remove</strong> paddlers by clicking the × button</li>
+          <li><strong>Add paddlers</strong> to the list below (manually or via Excel)</li>
+          <li>Click <strong>Generate Lineup</strong> to auto-assign to boat</li>
+          <li><strong>Drag & drop</strong> paddlers to reorder or move between sides</li>
+          <li><strong>Balance</strong> by checking weight totals on each side</li>
         </ol>
       </section>
 
@@ -346,9 +386,9 @@ function App() {
                 value={form.side}
                 onChange={(e) => setForm({ ...form, side: e.target.value })}
               >
-                <option value="right">Right</option>
-                <option value="left">Left</option>
                 <option value="any">Any</option>
+                <option value="left">Left</option>
+                <option value="right">Right</option>
               </select>
             </label>
             <button onClick={addPaddler}>Add</button>
@@ -367,12 +407,49 @@ function App() {
             <details>
               <summary>📋 Expected Excel Columns</summary>
               <ul>
-                <li><strong>Name</strong> (or 姓名) - Paddler name</li>
-                <li><strong>Weight</strong> (or 体重) - Weight in kg</li>
-                <li><strong>Experience</strong> (or 经验) - Years of experience</li>
+                <li><strong>Name</strong> (or 姓名)</li>
+                <li><strong>Weight</strong> (or 体重)</li>
+                <li><strong>Experience</strong> (or 经验)</li>
                 <li><strong>Side</strong> (or 侧) - left / right / any</li>
               </ul>
             </details>
+          </div>
+        </section>
+
+        <section className="list-section">
+          <h2>Paddler List ({paddlerList.length})</h2>
+          
+          {paddlerList.length > 0 ? (
+            <SortableContext
+              items={paddlerList.map(p => p.id)}
+              strategy={verticalListSortingStrategy}
+              onDragEnd={handleListDragEnd}
+            >
+              <div className="paddler-list">
+                {paddlerList.map((p) => (
+                  <SortablePaddler
+                    key={p.id}
+                    id={p.id}
+                    paddler={p}
+                    onRemove={removePaddler}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          ) : (
+            <p className="empty-msg">No paddlers yet. Add some above!</p>
+          )}
+          
+          <div className="list-actions">
+            <button onClick={generateLineup} className="generate-btn" disabled={paddlerList.length === 0}>
+              Generate Lineup
+            </button>
+            <button onClick={clearBoat} className="clear-btn">
+              Clear Boat
+            </button>
+            <button onClick={clearList} className="clear-btn" disabled={paddlerList.length === 0}>
+              Clear List
+            </button>
           </div>
         </section>
 
@@ -383,8 +460,8 @@ function App() {
         >
           <section className="boat-section">
             <h2>
-              Boat ({paddlers.length}/20 paddlers)
-              {paddlers.length > 0 && (
+              Boat ({filledSlots}/20)
+              {filledSlots > 0 && (
                 <span className="stats">
                   | Avg: {avgWeight}kg
                 </span>
@@ -396,81 +473,73 @@ function App() {
                 <div className="position-row">
                   <div className="position">
                     <span className="label">🥁 Drummer</span>
-                    <span className="slot">-</span>
+                    <input
+                      type="text"
+                      className="position-input"
+                      placeholder="Name"
+                      value={drummer}
+                      onChange={(e) => setDrummer(e.target.value)}
+                    />
                   </div>
                   <div className="position">
                     <span className="label">🎣 Steer</span>
-                    <span className="slot">-</span>
+                    <input
+                      type="text"
+                      className="position-input"
+                      placeholder="Name"
+                      value={steer}
+                      onChange={(e) => setSteer(e.target.value)}
+                    />
                   </div>
                 </div>
               </div>
 
               <div className="paddler-slots">
-                <div className="side left">
-                  <h3>Left</h3>
-                  <SortableContext
-                    items={leftSlots.map((_, i) => `left-${i}`)}
-                    strategy={verticalListSortingStrategy}
-                  >
+                <SortableContext
+                  items={leftSlots.map((_, i) => `left-${i}`)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="side left">
+                    <h3>Left</h3>
                     {leftSlots.map((p, i) => (
                       <SortableSlot
                         key={`left-${i}`}
                         id={`left-${i}`}
                         paddler={p}
                         index={i}
-                        side="left"
-                        onRemove={removePaddler}
-                        onMoveLeft={moveToLeft}
+                        onRemove={removeFromBoat}
                       />
                     ))}
-                  </SortableContext>
-                  <div className="side-total">
-                    Total: {leftWeight}kg
+                    <div className="side-total">
+                      Total: {leftWeight}kg
+                    </div>
                   </div>
-                </div>
+                </SortableContext>
                 
-                <div className="side right">
-                  <h3>Right</h3>
-                  <SortableContext
-                    items={rightSlots.map((_, i) => `right-${i}`)}
-                    strategy={verticalListSortingStrategy}
-                  >
+                <SortableContext
+                  items={rightSlots.map((_, i) => `right-${i}`)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="side right">
+                    <h3>Right</h3>
                     {rightSlots.map((p, i) => (
                       <SortableSlot
                         key={`right-${i}`}
                         id={`right-${i}`}
                         paddler={p}
                         index={i}
-                        side="right"
-                        onRemove={removePaddler}
-                        onMoveRight={moveToRight}
+                        onRemove={removeFromBoat}
                       />
                     ))}
-                  </SortableContext>
-                  <div className="side-total">
-                    Total: {rightWeight}kg
+                    <div className="side-total">
+                      Total: {rightWeight}kg
+                    </div>
                   </div>
-                </div>
+                </SortableContext>
               </div>
             </div>
           </section>
         </DndContext>
-
-        <section className="paddlers-section">
-          <h2>All Paddlers ({paddlers.length})</h2>
-          <div className="paddler-list">
-            {paddlers.map((p) => (
-              <div key={p.id} className="paddler-card">
-                <span className="paddler-name">{p.name}</span>
-                <span>{p.weight}kg</span>
-                <span>{p.experience}yr</span>
-                <span className="side-tag">{p.side}</span>
-                <button className="remove" onClick={() => removePaddler(p.id)}>×</button>
-              </div>
-            ))}
-            {paddlers.length === 0 && <p className="empty-msg">No paddlers yet. Add some above!</p>}
-          </div>
-        </section>
       </main>
     </div>
   )
