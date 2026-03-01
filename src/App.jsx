@@ -66,8 +66,8 @@ function SortableSlot({ id, paddler, index, side, onRemove }) {
 
 function App() {
   const [paddlers, setPaddlers] = useState([])
-  const [leftSlots, setLeftSlots] = useState(Array(10).fill(null))
-  const [rightSlots, setRightSlots] = useState(Array(10).fill(null))
+  const [leftSlots, setLeftSlots] = useState(Array(20).fill(null))
+  const [rightSlots, setRightSlots] = useState(Array(20).fill(null))
   const [form, setForm] = useState({
     name: '',
     weight: 60,
