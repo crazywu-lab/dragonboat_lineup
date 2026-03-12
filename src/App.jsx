@@ -19,7 +19,7 @@ import { CSS } from '@dnd-kit/utilities'
 import * as XLSX from 'xlsx'
 import './App.css'
 
-function SortableSlot({ id, paddler, index, onRemove }) {
+function SortableSlot({ id, paddler, index, onRemove, showWeight }) {
   const {
     attributes,
     listeners,
@@ -35,10 +35,16 @@ function SortableSlot({ id, paddler, index, onRemove }) {
     opacity: isDragging ? 0.5 : 1,
   }
 
+  const genderColor = paddler?.gender?.toUpperCase() === 'F' ? '#ff5252' : paddler?.gender?.toUpperCase() === 'M' ? '#4488ff' : null
+
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{
+        ...style,
+        backgroundColor: genderColor,
+        borderColor: genderColor,
+      }}
       className={`slot ${paddler ? 'filled' : ''} ${isDragging ? 'dragging' : ''}`}
       {...attributes}
       {...listeners}
@@ -47,7 +53,7 @@ function SortableSlot({ id, paddler, index, onRemove }) {
       {paddler ? (
         <div className="paddler-info">
           <span className="name">{paddler.name}</span>
-          <span className="details">{paddler.weight}kg, {paddler.experience}yr</span>
+          <span className="details">{showWeight ? paddler.weight + 'kg' : ''}</span>
           <span className={`side-badge ${paddler.side}`}>{paddler.side}</span>
           <button
             className="remove"
@@ -91,7 +97,7 @@ function SortablePaddler({ id, paddler, onRemove }) {
       {...listeners}
     >
       <span className="name">{paddler.name}</span>
-      <span className="details">{paddler.weight}kg, {paddler.experience}yr</span>
+      <span className="details">{paddler.weight}kg{paddler.gender?.toLowerCase() !== 'any' ? ', ' + paddler.gender : ''}</span>
       <span className={`side-badge ${paddler.side}`}>{paddler.side}</span>
       <button
         className="remove"
@@ -112,10 +118,11 @@ function App() {
   const [rightSlots, setRightSlots] = useState(Array(10).fill(null))
   const [drummer, setDrummer] = useState('')
   const [steer, setSteer] = useState('')
+  const [showWeight, setShowWeight] = useState(true)
   const [form, setForm] = useState({
     name: '',
     weight: 60,
-    experience: 3,
+    gender: 'any',
     side: 'any',
   })
   const fileInputRef = useRef(null)
@@ -149,10 +156,35 @@ function App() {
       const sheet = workbook.Sheets[sheetName]
       const json = XLSX.utils.sheet_to_json(sheet)
 
+      if (json.length === 0) {
+        alert('Excel sheet is empty!')
+        event.target.value = ''
+        return
+      }
+
+      // Check if required columns exist
+      const firstRow = json[0]
+      const hasNameColumn = firstRow.Name || firstRow.name || firstRow.姓名
+      const hasWeightColumn = firstRow.Weight || firstRow.weight || firstRow.体重
+      const hasGenderColumn = firstRow.Gender || firstRow.gender || firstRow.性别
+      const hasSideColumn = firstRow.Side || firstRow.side || firstRow.侧
+
+      const missingColumns = []
+      if (!hasNameColumn) missingColumns.push('Name (or 姓名)')
+      if (!hasWeightColumn) missingColumns.push('Weight (or 体重)')
+      if (!hasGenderColumn) missingColumns.push('Gender (or 性别)')
+      if (!hasSideColumn) missingColumns.push('Side (or 侧)')
+
+      if (missingColumns.length > 0) {
+        alert(`Missing required columns: ${missingColumns.join(', ')}\n\nExpected columns:\n- Name (or 姓名)\n- Weight (or 体重)\n- Gender (or 性别)\n- Side (or 侧)`)
+        event.target.value = ''
+        return
+      }
+
       let newPaddlers = json.map((row, idx) => ({
         name: row.Name || row.name || row.姓名 || '',
         weight: Number(row.Weight || row.weight || row.体重 || 60),
-        experience: Number(row.Experience || row.experience || row.经验 || 3),
+        gender: (row.Gender || row.gender || row.性别 || 'any').toString().toLowerCase(),
         side: (row.Side || row.side || row.侧 || 'any').toString().toLowerCase(),
         id: Date.now() + idx,
       })).filter(p => p.name)
@@ -190,7 +222,7 @@ function App() {
     })
     
     setPaddlerList(newList)
-    setForm({ name: '', weight: 60, experience: 3, side: 'any' })
+    setForm({ name: '', weight: 60, gender: 'any', side: 'any' })
   }
 
   const removePaddler = (id) => {
@@ -208,9 +240,6 @@ function App() {
     const rightPreferred = paddlerList.filter(p => p.side === 'right')
     const anySide = paddlerList.filter(p => p.side !== 'left' && p.side !== 'right')
     
-    // Position weights: front/back lighter (1), middle heavier (2)
-    const positionWeights = [1, 1, 1, 2, 2, 2, 2, 1, 1, 1]
-    
     const newLeft = Array(10).fill(null)
     const newRight = Array(10).fill(null)
     
@@ -218,21 +247,17 @@ function App() {
     const placeByPosition = (paddlers, sideArray) => {
       if (paddlers.length === 0) return
       
-      const sorted = [...paddlers].sort((a, b) => a.weight - b.weight)
-      const midIdx = Math.floor(sorted.length / 2) + 1
-      const light = sorted.slice(0, midIdx)
-      const heavy = sorted.slice(midIdx)
-      
-      let lightIdx = 0
-      let heavyIdx = 0
-      
-      positionWeights.forEach((weight, i) => {
-        if (weight === 2 && heavyIdx < heavy.length) {
-          sideArray[i] = heavy[heavyIdx++]
+      const sorted = [...paddlers].sort((a, b) => b.weight - a.weight)
+      const startIdx = 4
+      for (let i = 0; i < sorted.length; i++) {
+        const posIdx = startIdx + (i % 2 === 0 ? -Math.ceil(i / 2) : Math.ceil(i / 2))
+        if (posIdx >= 0 && posIdx < sideArray.length) {
+          sideArray[posIdx] = sorted[i]
         } else {
-          sideArray[i] = light[lightIdx++]
+          // If we run out of positions (shouldn't happen with max 10), just fill remaining
+          sideArray.push(sorted[i])
         }
-      })
+      }
     }
     
     // Fill remaining with any-side paddlers, balancing by weight
@@ -330,16 +355,27 @@ function App() {
     }
   }
 
+  const calculateRowGroupWeights = (slots) => {
+    const rows1to3 = slots.slice(0, 3).reduce((s, p) => s + (p?.weight || 0), 0)
+    const rows4to7 = slots.slice(3, 7).reduce((s, p) => s + (p?.weight || 0), 0)
+    const rows8to10 = slots.slice(7, 10).reduce((s, p) => s + (p?.weight || 0), 0)
+    return { rows1to3, rows4to7, rows8to10 }
+  }
+
   const totalWeight = [...leftSlots, ...rightSlots].reduce((sum, p) => sum + (p?.weight || 0), 0)
   const avgWeight = [...leftSlots, ...rightSlots].filter(p => p).length ? Math.round(totalWeight / [...leftSlots, ...rightSlots].filter(p => p).length) : 0
   const leftWeight = leftSlots.reduce((s, p) => s + (p?.weight || 0), 0)
   const rightWeight = rightSlots.reduce((s, p) => s + (p?.weight || 0), 0)
+  const leftFront3 = leftSlots.slice(0, 3).reduce((s, p) => s + (p?.weight || 0), 0)
+  const rightFront3 = rightSlots.slice(0, 3).reduce((s, p) => s + (p?.weight || 0), 0)
   const filledSlots = [...leftSlots, ...rightSlots].filter(p => p).length
+  const leftRowGroups = calculateRowGroupWeights(leftSlots)
+  const rightRowGroups = calculateRowGroupWeights(rightSlots)
 
   return (
     <div className="app">
       <header>
-        <h1>🚤 Dragon Boat Lineup</h1>
+        <h1>🚤 Dragon Boat Lineup1</h1>
       </header>
 
       <section className="instructions">
@@ -373,12 +409,15 @@ function App() {
               />
             </label>
             <label>
-              Experience (years)
-              <input
-                type="number"
-                value={form.experience}
-                onChange={(e) => setForm({ ...form, experience: Number(e.target.value) })}
-              />
+              Gender
+              <select
+                value={form.gender}
+                onChange={(e) => setForm({ ...form, gender: e.target.value })}
+              >
+                <option value="any">Any</option>
+                <option value="M">M</option>
+                <option value="F">F</option>
+              </select>
             </label>
             <label>
               Side
@@ -409,7 +448,7 @@ function App() {
               <ul>
                 <li><strong>Name</strong> (or 姓名)</li>
                 <li><strong>Weight</strong> (or 体重)</li>
-                <li><strong>Experience</strong> (or 经验)</li>
+                <li><strong>Gender</strong> - M / F / any</li>
                 <li><strong>Side</strong> (or 侧) - left / right / any</li>
               </ul>
             </details>
@@ -467,6 +506,9 @@ function App() {
                 </span>
               )}
             </h2>
+            <button onClick={() => setShowWeight(!showWeight)} className="toggle-weight">
+              {showWeight ? 'Hide Weight' : 'Show Weight'}
+            </button>
             
             <div className="boat">
               <div className="positions">
@@ -495,11 +537,17 @@ function App() {
               </div>
 
               <div className="paddler-slots">
+                
                 <SortableContext
                   items={leftSlots.map((_, i) => `left-${i}`)}
                   strategy={verticalListSortingStrategy}
                 >
                   <div className="side left">
+                    <div className="row-groups left">
+                      <div className="row-group">Row 1-3<br></br>{leftRowGroups.rows1to3}kg</div>
+                      <div className="row-group">Row 4-7<br></br>{leftRowGroups.rows4to7}kg</div>
+                      <div className="row-group">Row 8-10<br></br>{leftRowGroups.rows8to10}kg</div>
+                    </div>
                     <h3>Left</h3>
                     {leftSlots.map((p, i) => (
                       <SortableSlot
@@ -508,6 +556,7 @@ function App() {
                         paddler={p}
                         index={i}
                         onRemove={removeFromBoat}
+                        showWeight={showWeight}
                       />
                     ))}
                     <div className="side-total">
@@ -521,6 +570,11 @@ function App() {
                   strategy={verticalListSortingStrategy}
                 >
                   <div className="side right">
+                    <div className="row-groups right">
+                      <div className="row-group">Row 1-3<br></br>{rightRowGroups.rows1to3}kg</div>
+                      <div className="row-group">Row 4-7<br></br>{rightRowGroups.rows4to7}kg</div>
+                      <div className="row-group">Row 8-10<br></br>{rightRowGroups.rows8to10}kg</div>
+                    </div>
                     <h3>Right</h3>
                     {rightSlots.map((p, i) => (
                       <SortableSlot
@@ -529,6 +583,7 @@ function App() {
                         paddler={p}
                         index={i}
                         onRemove={removeFromBoat}
+                        showWeight={showWeight}
                       />
                     ))}
                     <div className="side-total">
