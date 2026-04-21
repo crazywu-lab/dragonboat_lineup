@@ -116,6 +116,8 @@ function App() {
   const [paddlerList, setPaddlerList] = useState([])
   const [leftSlots, setLeftSlots] = useState(Array(10).fill(null))
   const [rightSlots, setRightSlots] = useState(Array(10).fill(null))
+  const [boat2LeftSlots, setBoat2LeftSlots] = useState(Array(10).fill(null))
+  const [boat2RightSlots, setBoat2RightSlots] = useState(Array(10).fill(null))
   const [drummer, setDrummer] = useState('')
   const [steer, setSteer] = useState('')
   const [showWeight, setShowWeight] = useState(true)
@@ -181,20 +183,13 @@ function App() {
         return
       }
 
-      let newPaddlers = json.map((row, idx) => ({
+      const newPaddlers = json.map((row, idx) => ({
         name: row.Name || row.name || row.姓名 || '',
         weight: Number(row.Weight || row.weight || row.体重 || 60),
         gender: (row.Gender || row.gender || row.性别 || 'any').toString().toLowerCase(),
         side: (row.Side || row.side || row.侧 || 'any').toString().toLowerCase(),
         id: Date.now() + idx,
       })).filter(p => p.name)
-
-      // Check if total exceeds 20
-      const totalAfterImport = paddlerList.length + newPaddlers.length
-      if (totalAfterImport > 20) {
-        alert(`Maximum 20 paddlers allowed! You have ${totalAfterImport} paddlers. Only first ${20 - paddlerList.length} will be added.`)
-        newPaddlers = newPaddlers.slice(0, 20 - paddlerList.length)
-      }
 
       setPaddlerList([...paddlerList, ...newPaddlers])
     }
@@ -311,33 +306,39 @@ function App() {
     setPaddlerList(arrayMove(paddlerList, active.index, over.index))
   }
 
+  const getSlotsForId = (boat, side) => {
+    if (boat === 'boat1') return side === 'left' ? leftSlots : rightSlots
+    if (boat === 'boat2') return side === 'left' ? boat2LeftSlots : boat2RightSlots
+    return null
+  }
+
+  const setSlotForId = (boat, side, newSlots) => {
+    if (boat === 'boat1' && side === 'left') setLeftSlots(newSlots)
+    if (boat === 'boat1' && side === 'right') setRightSlots(newSlots)
+    if (boat === 'boat2' && side === 'left') setBoat2LeftSlots(newSlots)
+    if (boat === 'boat2' && side === 'right') setBoat2RightSlots(newSlots)
+  }
+
   const handleDragEnd = (event) => {
     const { active, over } = event
     
     if (!over) return
 
-    const activeId = active.id
-    const overId = over.id
-    const [activeSide, activeIndex] = activeId.split('-')
-    const [overSide, overIndex] = overId.split('-')
+    const activeId = active.id.toString()
+    const overId = over.id.toString()
+    const [activeBoat, activeSide, activeIndexStr] = activeId.split('-')
+    const [overBoat, overSide, overIndexStr] = overId.split('-')
 
-    if (activeSide === overSide) {
-      const sideSlots = activeSide === 'left' ? [...leftSlots] : [...rightSlots]
-      const fromIndex = parseInt(activeIndex)
-      const toIndex = parseInt(overIndex)
-      const newSlots = arrayMove(sideSlots, fromIndex, toIndex)
-      
-      if (activeSide === 'left') {
-        setLeftSlots(newSlots)
-      } else {
-        setRightSlots(newSlots)
-      }
+    const fromIndex = parseInt(activeIndexStr)
+    const toIndex = parseInt(overIndexStr)
+
+    if (activeBoat === overBoat && activeSide === overSide) {
+      const sideSlots = getSlotsForId(activeBoat, activeSide)
+      const newSlots = arrayMove([...sideSlots], fromIndex, toIndex)
+      setSlotForId(activeBoat, activeSide, newSlots)
     } else {
-      const fromSlots = activeSide === 'left' ? [...leftSlots] : [...rightSlots]
-      const toSlots = activeSide === 'left' ? [...rightSlots] : [...leftSlots]
-      
-      const fromIndex = parseInt(activeIndex)
-      const toIndex = parseInt(overIndex)
+      const fromSlots = [...getSlotsForId(activeBoat, activeSide)]
+      const toSlots = [...getSlotsForId(overBoat, overSide)]
       
       const paddler = fromSlots[fromIndex]
       const targetPaddler = toSlots[toIndex]
@@ -345,13 +346,8 @@ function App() {
       fromSlots[fromIndex] = targetPaddler
       toSlots[toIndex] = paddler
       
-      if (activeSide === 'left') {
-        setLeftSlots(fromSlots)
-        setRightSlots(toSlots)
-      } else {
-        setRightSlots(fromSlots)
-        setLeftSlots(toSlots)
-      }
+      setSlotForId(activeBoat, activeSide, fromSlots)
+      setSlotForId(overBoat, overSide, toSlots)
     }
   }
 
@@ -371,6 +367,11 @@ function App() {
   const filledSlots = [...leftSlots, ...rightSlots].filter(p => p).length
   const leftRowGroups = calculateRowGroupWeights(leftSlots)
   const rightRowGroups = calculateRowGroupWeights(rightSlots)
+  
+  const boat2LeftWeight = boat2LeftSlots.reduce((s, p) => s + (p?.weight || 0), 0)
+  const boat2RightWeight = boat2RightSlots.reduce((s, p) => s + (p?.weight || 0), 0)
+  const boat2LeftRowGroups = calculateRowGroupWeights(boat2LeftSlots)
+  const boat2RightRowGroups = calculateRowGroupWeights(boat2RightSlots)
 
   return (
     <div className="app">
@@ -510,87 +511,171 @@ function App() {
               {showWeight ? 'Hide Weight' : 'Show Weight'}
             </button>
             
-            <div className="boat">
-              <div className="positions">
-                <div className="position-row">
-                  <div className="position">
-                    <span className="label">🥁 Drummer</span>
-                    <input
-                      type="text"
-                      className="position-input"
-                      placeholder="Name"
-                      value={drummer}
-                      onChange={(e) => setDrummer(e.target.value)}
-                    />
+            <div className="boats">
+              <div className="boat instance primary">
+                <div className="boat-title">Boat 1</div>
+                <div className="positions">
+                  <div className="position-row">
+                    <div className="position">
+                      <span className="label">🥁 Drummer</span>
+                      <input
+                        type="text"
+                        className="position-input"
+                        placeholder="Name"
+                        value={drummer}
+                        onChange={(e) => setDrummer(e.target.value)}
+                      />
+                    </div>
+                    <div className="position">
+                      <span className="label">🎣 Steer</span>
+                      <input
+                        type="text"
+                        className="position-input"
+                        placeholder="Name"
+                        value={steer}
+                        onChange={(e) => setSteer(e.target.value)}
+                      />
+                    </div>
                   </div>
-                  <div className="position">
-                    <span className="label">🎣 Steer</span>
-                    <input
-                      type="text"
-                      className="position-input"
-                      placeholder="Name"
-                      value={steer}
-                      onChange={(e) => setSteer(e.target.value)}
-                    />
-                  </div>
+                </div>
+
+                <div className="paddler-slots">
+                  <SortableContext
+                    items={leftSlots.map((_, i) => `boat1-left-${i}`)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="side left">
+                      <div className="row-groups left">
+                        <div className="row-group">Row 1-3<br></br>{leftRowGroups.rows1to3}kg</div>
+                        <div className="row-group">Row 4-7<br></br>{leftRowGroups.rows4to7}kg</div>
+                        <div className="row-group">Row 8-10<br></br>{leftRowGroups.rows8to10}kg</div>
+                      </div>
+                      <h3>Left</h3>
+                      {leftSlots.map((p, i) => (
+                        <SortableSlot
+                          key={`boat1-left-${i}`}
+                          id={`boat1-left-${i}`}
+                          paddler={p}
+                          index={i}
+                          onRemove={removeFromBoat}
+                          showWeight={showWeight}
+                        />
+                      ))}
+                      <div className="side-total">
+                        Total: {leftWeight}kg
+                      </div>
+                    </div>
+                  </SortableContext>
+                  <SortableContext
+                    items={rightSlots.map((_, i) => `boat1-right-${i}`)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="side right">
+                      <div className="row-groups right">
+                        <div className="row-group">Row 1-3<br></br>{rightRowGroups.rows1to3}kg</div>
+                        <div className="row-group">Row 4-7<br></br>{rightRowGroups.rows4to7}kg</div>
+                        <div className="row-group">Row 8-10<br></br>{rightRowGroups.rows8to10}kg</div>
+                      </div>
+                      <h3>Right</h3>
+                      {rightSlots.map((p, i) => (
+                        <SortableSlot
+                          key={`boat1-right-${i}`}
+                          id={`boat1-right-${i}`}
+                          paddler={p}
+                          index={i}
+                          onRemove={removeFromBoat}
+                          showWeight={showWeight}
+                        />
+                      ))}
+                      <div className="side-total">
+                        Total: {rightWeight}kg
+                      </div>
+                    </div>
+                  </SortableContext>
                 </div>
               </div>
 
-              <div className="paddler-slots">
-                
-                <SortableContext
-                  items={leftSlots.map((_, i) => `left-${i}`)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="side left">
-                    <div className="row-groups left">
-                      <div className="row-group">Row 1-3<br></br>{leftRowGroups.rows1to3}kg</div>
-                      <div className="row-group">Row 4-7<br></br>{leftRowGroups.rows4to7}kg</div>
-                      <div className="row-group">Row 8-10<br></br>{leftRowGroups.rows8to10}kg</div>
-                    </div>
-                    <h3>Left</h3>
-                    {leftSlots.map((p, i) => (
-                      <SortableSlot
-                        key={`left-${i}`}
-                        id={`left-${i}`}
-                        paddler={p}
-                        index={i}
-                        onRemove={removeFromBoat}
-                        showWeight={showWeight}
+              <div className="boat instance secondary">
+                <div className="boat-title">Boat 2</div>
+                <div className="positions">
+                  <div className="position-row">
+                    <div className="position">
+                      <span className="label">🥁 Drummer</span>
+                      <input
+                        type="text"
+                        className="position-input"
+                        placeholder="Name"
+                        value={drummer}
+                        onChange={(e) => setDrummer(e.target.value)}
                       />
-                    ))}
-                    <div className="side-total">
-                      Total: {leftWeight}kg
+                    </div>
+                    <div className="position">
+                      <span className="label">🎣 Steer</span>
+                      <input
+                        type="text"
+                        className="position-input"
+                        placeholder="Name"
+                        value={steer}
+                        onChange={(e) => setSteer(e.target.value)}
+                      />
                     </div>
                   </div>
-                </SortableContext>
-                
-                <SortableContext
-                  items={rightSlots.map((_, i) => `right-${i}`)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="side right">
-                    <div className="row-groups right">
-                      <div className="row-group">Row 1-3<br></br>{rightRowGroups.rows1to3}kg</div>
-                      <div className="row-group">Row 4-7<br></br>{rightRowGroups.rows4to7}kg</div>
-                      <div className="row-group">Row 8-10<br></br>{rightRowGroups.rows8to10}kg</div>
+                </div>
+
+                <div className="paddler-slots">
+                  <SortableContext
+                    items={boat2LeftSlots.map((_, i) => `boat2-left-${i}`)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="side left">
+                      <div className="row-groups left">
+                        <div className="row-group">Row 1-3<br></br>{boat2LeftRowGroups.rows1to3}kg</div>
+                        <div className="row-group">Row 4-7<br></br>{boat2LeftRowGroups.rows4to7}kg</div>
+                        <div className="row-group">Row 8-10<br></br>{boat2LeftRowGroups.rows8to10}kg</div>
+                      </div>
+                      <h3>Left</h3>
+                      {boat2LeftSlots.map((p, i) => (
+                        <SortableSlot
+                          key={`boat2-left-${i}`}
+                          id={`boat2-left-${i}`}
+                          paddler={p}
+                          index={i}
+                          onRemove={removeFromBoat}
+                          showWeight={showWeight}
+                        />
+                      ))}
+                      <div className="side-total">
+                        Total: {boat2LeftWeight}kg
+                      </div>
                     </div>
-                    <h3>Right</h3>
-                    {rightSlots.map((p, i) => (
-                      <SortableSlot
-                        key={`right-${i}`}
-                        id={`right-${i}`}
-                        paddler={p}
-                        index={i}
-                        onRemove={removeFromBoat}
-                        showWeight={showWeight}
-                      />
-                    ))}
-                    <div className="side-total">
-                      Total: {rightWeight}kg
+                  </SortableContext>
+                  <SortableContext
+                    items={boat2RightSlots.map((_, i) => `boat2-right-${i}`)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="side right">
+                      <div className="row-groups right">
+                        <div className="row-group">Row 1-3<br></br>{boat2RightRowGroups.rows1to3}kg</div>
+                        <div className="row-group">Row 4-7<br></br>{boat2RightRowGroups.rows4to7}kg</div>
+                        <div className="row-group">Row 8-10<br></br>{boat2RightRowGroups.rows8to10}kg</div>
+                      </div>
+                      <h3>Right</h3>
+                      {boat2RightSlots.map((p, i) => (
+                        <SortableSlot
+                          key={`boat2-right-${i}`}
+                          id={`boat2-right-${i}`}
+                          paddler={p}
+                          index={i}
+                          onRemove={removeFromBoat}
+                          showWeight={showWeight}
+                        />
+                      ))}
+                      <div className="side-total">
+                        Total: {boat2RightWeight}kg
+                      </div>
                     </div>
-                  </div>
-                </SortableContext>
+                  </SortableContext>
+                </div>
               </div>
             </div>
           </section>

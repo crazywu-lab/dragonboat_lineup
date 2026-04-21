@@ -193,6 +193,32 @@ h2 {
   gap: 30px;
 }
 
+.boats {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+
+.boat.instance {
+  flex: 1;
+  min-width: 360px;
+  max-width: 520px;
+}
+
+.boat-title {
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: #d8c7ff;
+}
+
+.slot.static {
+  cursor: default;
+}
+
 .side {
   flex: 1;
   max-width: 350px;
