@@ -204,7 +204,7 @@ h2 {
 .boat.instance {
   flex: 1;
   min-width: 360px;
-  max-width: 520px;
+  max-width: 620px;
 }
 
 .boat-title {
