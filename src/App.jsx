@@ -80,7 +80,7 @@ function SortablePaddler({ id, paddler, onRemove }) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id })
+  } = useSortable({ id: `paddler-${id}` })
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -326,28 +326,91 @@ function App() {
 
     const activeId = active.id.toString()
     const overId = over.id.toString()
-    const [activeBoat, activeSide, activeIndexStr] = activeId.split('-')
-    const [overBoat, overSide, overIndexStr] = overId.split('-')
 
-    const fromIndex = parseInt(activeIndexStr)
-    const toIndex = parseInt(overIndexStr)
+    // Determine if dragging from paddler list or between boats
+    const isActivePaddler = activeId.startsWith('paddler-')
+    const isOverPaddler = overId.startsWith('paddler-')
 
-    if (activeBoat === overBoat && activeSide === overSide) {
-      const sideSlots = getSlotsForId(activeBoat, activeSide)
-      const newSlots = arrayMove([...sideSlots], fromIndex, toIndex)
-      setSlotForId(activeBoat, activeSide, newSlots)
-    } else {
-      const fromSlots = [...getSlotsForId(activeBoat, activeSide)]
+    // Case 1: Reordering paddler list (paddler to paddler)
+    if (isActivePaddler && isOverPaddler) {
+      const activePaddlerId = activeId.replace('paddler-', '')
+      const overPaddlerId = overId.replace('paddler-', '')
+      const activeIndex = paddlerList.findIndex(p => p.id === activePaddlerId)
+      const overIndex = paddlerList.findIndex(p => p.id === overPaddlerId)
+      if (activeIndex !== -1 && overIndex !== -1) {
+        setPaddlerList(arrayMove(paddlerList, activeIndex, overIndex))
+      }
+      return
+    }
+
+    // Case 2: From paddler list to boat slot
+    if (isActivePaddler && !isOverPaddler) {
+      const paddlerId = activeId.replace('paddler-', '')
+      const paddler = paddlerList.find(p => p.id === paddlerId)
+      if (!paddler) return
+
+      const [overBoat, overSide, overIndexStr] = overId.split('-')
+      const toIndex = parseInt(overIndexStr)
       const toSlots = [...getSlotsForId(overBoat, overSide)]
-      
-      const paddler = fromSlots[fromIndex]
-      const targetPaddler = toSlots[toIndex]
-      
-      fromSlots[fromIndex] = targetPaddler
+      const displaced = toSlots[toIndex]
+
       toSlots[toIndex] = paddler
-      
-      setSlotForId(activeBoat, activeSide, fromSlots)
       setSlotForId(overBoat, overSide, toSlots)
+
+      // Remove from paddler list, or add displaced paddler if exists
+      if (displaced) {
+        setPaddlerList([...paddlerList.filter(p => p.id !== paddlerId), displaced])
+      } else {
+        setPaddlerList(paddlerList.filter(p => p.id !== paddlerId))
+      }
+      return
+    }
+
+    // Case 3: From boat slot back to paddler list
+    if (!isActivePaddler && isOverPaddler) {
+      const [activeBoat, activeSide, activeIndexStr] = activeId.split('-')
+      const fromIndex = parseInt(activeIndexStr)
+      const fromSlots = [...getSlotsForId(activeBoat, activeSide)]
+      const paddler = fromSlots[fromIndex]
+      
+      if (paddler) {
+        // Remove from boat slot
+        fromSlots[fromIndex] = null
+        setSlotForId(activeBoat, activeSide, fromSlots)
+        
+        // Add to paddler list
+        setPaddlerList([...paddlerList, paddler])
+      }
+      return
+    }
+
+    // Case 4: Between boat slots
+    if (!isActivePaddler && !isOverPaddler) {
+      const [activeBoat, activeSide, activeIndexStr] = activeId.split('-')
+      const [overBoat, overSide, overIndexStr] = overId.split('-')
+
+      const fromIndex = parseInt(activeIndexStr)
+      const toIndex = parseInt(overIndexStr)
+
+      if (activeBoat === overBoat && activeSide === overSide) {
+        // Reorder within same side
+        const sideSlots = getSlotsForId(activeBoat, activeSide)
+        const newSlots = arrayMove([...sideSlots], fromIndex, toIndex)
+        setSlotForId(activeBoat, activeSide, newSlots)
+      } else {
+        // Cross-side or cross-boat swap
+        const fromSlots = [...getSlotsForId(activeBoat, activeSide)]
+        const toSlots = [...getSlotsForId(overBoat, overSide)]
+        
+        const paddler = fromSlots[fromIndex]
+        const targetPaddler = toSlots[toIndex]
+        
+        fromSlots[fromIndex] = targetPaddler
+        toSlots[toIndex] = paddler
+        
+        setSlotForId(activeBoat, activeSide, fromSlots)
+        setSlotForId(overBoat, overSide, toSlots)
+      }
     }
   }
 
@@ -461,9 +524,8 @@ function App() {
           
           {paddlerList.length > 0 ? (
             <SortableContext
-              items={paddlerList.map(p => p.id)}
+              items={paddlerList.map(p => `paddler-${p.id}`)}
               strategy={verticalListSortingStrategy}
-              onDragEnd={handleListDragEnd}
             >
               <div className="paddler-list">
                 {paddlerList.map((p) => (
