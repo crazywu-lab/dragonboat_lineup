@@ -19,7 +19,7 @@ import { CSS } from '@dnd-kit/utilities'
 import * as XLSX from 'xlsx'
 import './App.css'
 
-function SortableSlot({ id, paddler, index, onRemove, showWeight }) {
+function SortableSlot({ id, paddler, index, onRemove, showWeight, onSlotClick, isHighlighted }) {
   const {
     attributes,
     listeners,
@@ -45,9 +45,10 @@ function SortableSlot({ id, paddler, index, onRemove, showWeight }) {
         backgroundColor: genderColor,
         borderColor: genderColor,
       }}
-      className={`slot ${paddler ? 'filled' : ''} ${isDragging ? 'dragging' : ''}`}
+      className={`slot ${paddler ? 'filled' : ''} ${isDragging ? 'dragging' : ''} ${isHighlighted ? 'highlighted' : ''}`}
       {...attributes}
       {...listeners}
+      onClick={() => onSlotClick && onSlotClick(index)}
     >
       <span className="seat-num">{index + 1}</span>
       {paddler ? (
@@ -72,7 +73,7 @@ function SortableSlot({ id, paddler, index, onRemove, showWeight }) {
   )
 }
 
-function SortablePaddler({ id, paddler, onRemove }) {
+function SortablePaddler({ id, paddler, onRemove, isSelected, onSelect }) {
   const {
     attributes,
     listeners,
@@ -92,9 +93,10 @@ function SortablePaddler({ id, paddler, onRemove }) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`paddler-item ${isDragging ? 'dragging' : ''}`}
+      className={`paddler-item ${isDragging ? 'dragging' : ''} ${isSelected ? 'selected' : ''}`}
       {...attributes}
       {...listeners}
+      onClick={() => onSelect(paddler)}
     >
       <span className="name">{paddler.name}</span>
       <span className="details">{paddler.weight}kg{paddler.gender?.toLowerCase() !== 'any' ? ', ' + paddler.gender : ''}</span>
@@ -121,6 +123,7 @@ function App() {
   const [drummer, setDrummer] = useState('')
   const [steer, setSteer] = useState('')
   const [showWeight, setShowWeight] = useState(true)
+  const [selectedPaddler, setSelectedPaddler] = useState(null)
   const [form, setForm] = useState({
     name: '',
     weight: 60,
@@ -297,7 +300,36 @@ function App() {
   const removeFromBoat = (id) => {
     setLeftSlots(leftSlots.map(p => p?.id === id ? null : p))
     setRightSlots(rightSlots.map(p => p?.id === id ? null : p))
+    setBoat2LeftSlots(boat2LeftSlots.map(p => p?.id === id ? null : p))
+    setBoat2RightSlots(boat2RightSlots.map(p => p?.id === id ? null : p))
     setPaddlerList(paddlerList.filter(p => p.id !== id))
+  }
+
+  const handlePaddlerSelect = (paddler) => {
+    setSelectedPaddler(selectedPaddler?.id === paddler.id ? null : paddler)
+  }
+
+  const handleSlotClick = (boat, side, index) => {
+    if (!selectedPaddler) return
+
+    const slots = getSlotsForId(boat, side)
+    const newSlots = [...slots]
+    const displaced = newSlots[index]
+
+    // Place selected paddler in the slot
+    newSlots[index] = selectedPaddler
+    setSlotForId(boat, side, newSlots)
+
+    // Remove from paddler list
+    setPaddlerList(paddlerList.filter(p => p.id !== selectedPaddler.id))
+
+    // Add displaced paddler back to list if there was one
+    if (displaced) {
+      setPaddlerList(prev => [...prev, displaced])
+    }
+
+    // Clear selection
+    setSelectedPaddler(null)
   }
 
   const handleListDragEnd = (event) => {
@@ -343,30 +375,7 @@ function App() {
       return
     }
 
-    // Case 2: From paddler list to boat slot
-    if (isActivePaddler && !isOverPaddler) {
-      const paddlerId = activeId.replace('paddler-', '')
-      const paddler = paddlerList.find(p => p.id === paddlerId)
-      if (!paddler) return
-
-      const [overBoat, overSide, overIndexStr] = overId.split('-')
-      const toIndex = parseInt(overIndexStr)
-      const toSlots = [...getSlotsForId(overBoat, overSide)]
-      const displaced = toSlots[toIndex]
-
-      toSlots[toIndex] = paddler
-      setSlotForId(overBoat, overSide, toSlots)
-
-      // Remove from paddler list, or add displaced paddler if exists
-      if (displaced) {
-        setPaddlerList([...paddlerList.filter(p => p.id !== paddlerId), displaced])
-      } else {
-        setPaddlerList(paddlerList.filter(p => p.id !== paddlerId))
-      }
-      return
-    }
-
-    // Case 3: From boat slot back to paddler list
+    // Case 2: From boat slot back to paddler list
     if (!isActivePaddler && isOverPaddler) {
       const [activeBoat, activeSide, activeIndexStr] = activeId.split('-')
       const fromIndex = parseInt(activeIndexStr)
@@ -384,7 +393,7 @@ function App() {
       return
     }
 
-    // Case 4: Between boat slots
+    // Case 3: Between boat slots
     if (!isActivePaddler && !isOverPaddler) {
       const [activeBoat, activeSide, activeIndexStr] = activeId.split('-')
       const [overBoat, overSide, overIndexStr] = overId.split('-')
@@ -439,14 +448,15 @@ function App() {
   return (
     <div className="app">
       <header>
-        <h1>🚤 Dragon Boat Lineup1</h1>
+        <h1>🐲 Dragon Boat Lineup 🐲</h1>
       </header>
 
       <section className="instructions">
         <h2>📖 How to Use</h2>
         <ol>
           <li><strong>Add paddlers</strong> to the list below (manually or via Excel)</li>
-          <li>Click <strong>Generate Lineup</strong> to auto-assign to boat</li>
+          <li><strong>Click a paddler</strong> in the list to select them</li>
+          <li><strong>Click a boat slot</strong> to place the selected paddler there</li>
           <li><strong>Drag & drop</strong> paddlers to reorder or move between sides</li>
           <li><strong>Balance</strong> by checking weight totals on each side</li>
         </ol>
@@ -519,47 +529,52 @@ function App() {
           </div>
         </section>
 
-        <section className="list-section">
-          <h2>Paddler List ({paddlerList.length})</h2>
-          
-          {paddlerList.length > 0 ? (
-            <SortableContext
-              items={paddlerList.map(p => `paddler-${p.id}`)}
-              strategy={verticalListSortingStrategy}
-            >
-              <div className="paddler-list">
-                {paddlerList.map((p) => (
-                  <SortablePaddler
-                    key={p.id}
-                    id={p.id}
-                    paddler={p}
-                    onRemove={removePaddler}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-          ) : (
-            <p className="empty-msg">No paddlers yet. Add some above!</p>
-          )}
-          
-          <div className="list-actions">
-            <button onClick={generateLineup} className="generate-btn" disabled={paddlerList.length === 0}>
-              Generate Lineup
-            </button>
-            <button onClick={clearBoat} className="clear-btn">
-              Clear Boat
-            </button>
-            <button onClick={clearList} className="clear-btn" disabled={paddlerList.length === 0}>
-              Clear List
-            </button>
-          </div>
-        </section>
-
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
         >
+          <section className="list-section">
+            <h2>Paddler List ({paddlerList.length})</h2>
+            {selectedPaddler && (
+              <div className="selected-indicator">
+                <span>🎯 Selected: <strong>{selectedPaddler.name}</strong> ({selectedPaddler.weight}kg) - Click on a boat position to place</span>
+                <button onClick={() => setSelectedPaddler(null)} className="clear-selection">✕</button>
+              </div>
+            )}
+            
+            {paddlerList.length > 0 ? (
+              <SortableContext
+                items={paddlerList.map(p => `paddler-${p.id}`)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="paddler-list">
+                  {paddlerList.map((p) => (
+                    <SortablePaddler
+                      key={p.id}
+                      id={p.id}
+                      paddler={p}
+                      onRemove={removePaddler}
+                      isSelected={selectedPaddler?.id === p.id}
+                      onSelect={handlePaddlerSelect}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            ) : (
+              <p className="empty-msg">No paddlers yet. Add some above!</p>
+            )}
+            
+            <div className="list-actions">
+              <button onClick={clearBoat} className="clear-btn">
+                Clear Boat
+              </button>
+              <button onClick={clearList} className="clear-btn" disabled={paddlerList.length === 0}>
+                Clear List
+              </button>
+            </div>
+          </section>
+
           <section className="boat-section">
             <h2>
               Boat ({filledSlots}/20)
@@ -621,6 +636,8 @@ function App() {
                           index={i}
                           onRemove={removeFromBoat}
                           showWeight={showWeight}
+                          onSlotClick={selectedPaddler ? (index) => handleSlotClick('boat1', 'left', index) : undefined}
+                          isHighlighted={!!selectedPaddler}
                         />
                       ))}
                       <div className="side-total">
@@ -647,6 +664,8 @@ function App() {
                           index={i}
                           onRemove={removeFromBoat}
                           showWeight={showWeight}
+                          onSlotClick={selectedPaddler ? (index) => handleSlotClick('boat1', 'right', index) : undefined}
+                          isHighlighted={!!selectedPaddler}
                         />
                       ))}
                       <div className="side-total">
@@ -704,6 +723,8 @@ function App() {
                           index={i}
                           onRemove={removeFromBoat}
                           showWeight={showWeight}
+                          onSlotClick={selectedPaddler ? (index) => handleSlotClick('boat2', 'left', index) : undefined}
+                          isHighlighted={!!selectedPaddler}
                         />
                       ))}
                       <div className="side-total">
@@ -730,6 +751,8 @@ function App() {
                           index={i}
                           onRemove={removeFromBoat}
                           showWeight={showWeight}
+                          onSlotClick={selectedPaddler ? (index) => handleSlotClick('boat2', 'right', index) : undefined}
+                          isHighlighted={!!selectedPaddler}
                         />
                       ))}
                       <div className="side-total">
