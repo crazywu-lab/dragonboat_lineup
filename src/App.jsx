@@ -122,6 +122,8 @@ function App() {
   const [boat2RightSlots, setBoat2RightSlots] = useState(Array(10).fill(null))
   const [drummer, setDrummer] = useState('')
   const [steer, setSteer] = useState('')
+  const [boat2Drummer, setBoat2Drummer] = useState('')
+  const [boat2Steer, setBoat2Steer] = useState('')
   const [showWeight, setShowWeight] = useState(true)
   const [selectedPaddler, setSelectedPaddler] = useState(null)
   const [form, setForm] = useState({
@@ -686,8 +688,8 @@ function App() {
                         type="text"
                         className="position-input"
                         placeholder="Name"
-                        value={drummer}
-                        onChange={(e) => setDrummer(e.target.value)}
+                        value={boat2Drummer}
+                        onChange={(e) => setBoat2Drummer(e.target.value)}
                       />
                     </div>
                     <div className="position">
@@ -696,8 +698,8 @@ function App() {
                         type="text"
                         className="position-input"
                         placeholder="Name"
-                        value={steer}
-                        onChange={(e) => setSteer(e.target.value)}
+                        value={boat2Steer}
+                        onChange={(e) => setBoat2Steer(e.target.value)}
                       />
                     </div>
                   </div>
